@@ -1,25 +1,28 @@
 
+abstract type Data end
+abstract type parameters{T} <: AbstractArray{T,1} end
 
-abstract type Parameters{T} <: AbstractArray{T,1} end
 
+abstract type Constrainedparameters{p,T} <: parameters{T} end
+log_jacobian!{T}(A::AbstractArray{T}) = zero(T)
+Base.IndexStyle(::parameters) = IndexLinear()
 
-abstract type ConstrainedParameters{p,T} <: Parameters{T} end
-log_jacobian{T}(A::AbstractArray{T}) = zero(T)
-Base.IndexStyle(::Parameters) = IndexLinear()
+type_length{T}(::Type{Vector{T}}) = 0
 
-type_length(::Type{Vector{Float64}}) = 0
-
-@generated function Base.show{T <: Parameters}(io::IO, ::MIME"text/plain", Θ::T)
-  quote
-    for j in fieldnames(T)
-      println(getfield(Θ, j))
-    end
+function Base.show{T <: parameters}(io::IO, ::MIME"text/plain", Θ::T)
+  for j in 2:length(fieldnames(T))
+    println(getfield(Θ, j))
+  end
+end
+function Base.show{T <: parameters}(io::IO, Θ::T)
+  for j in 2:length(fieldnames(T))
+    println(getfield(Θ, j))
   end
 end
 
-abstract type SquareMatrix{p, T} <: ConstrainedParameters{p, T} end
+abstract type SquareMatrix{p, T} <: Constrainedparameters{p, T} end
 
-update!(Θ::ConstrainedParameters) = nothing
+update!(Θ::Constrainedparameters) = nothing
 
 @generated function Base.size{T <: SquareMatrix}(A::T)
   p = T.parameters[1]
@@ -73,7 +76,7 @@ function CovarianceMatrix(T::DataType, p, Σ::Symmetric = Symmetric(Array{T}(p,p
   update_U!(Θ)
   Θ
 end
-function update!(Θ::CovarianceMatrix)
+function update_U_inverse!(Θ::CovarianceMatrix)
   Θ.U_inverse.diag .= exp.(Θ.Λ)
 end
 function construct{p, T}(A::Type{CovarianceMatrix{p,T}}, Θv::Vector{T}, i::Int)
@@ -82,12 +85,27 @@ function construct{p, T}(A::Type{CovarianceMatrix{p,T}}, Θv::Vector{T}, i::Int)
   U_inverse = UpperTriangleView(exp.(Λ), view(Θv, i + (1+p:length(A))))
   CovarianceMatrix{p, T}(Λ, U, Symmetric(Array{T}(p,p)), U_inverse)
 end
+function construct{p, T}(A::Type{CovarianceMatrix{p,T}}, Θv::Vector{T}, i::Int, CovMat::Array{T,2})
+  construct{p, T}(A, Θv, i, Symmetric(CovMat))
+end
+function construct{p, T}(A::Type{CovarianceMatrix{p,T}}, Θv::Vector{T}, i::Int, CovMat::Symmetric{T,Array{T,2}})
+  if CovMat.uplo != 'U'
+    CovMat = Symmetric(CovMat.data')
+  end
+  Λ = view(Θv, i + (1:p))
+  U = UpperTriangleVector(Array{T}(p), Array{T}(round(Int,p*(p-1)/2)))
+  U_inverse = UpperTriangleView(exp.(Λ), view(Θv, i + (1+p:length(A))))
+  Θ = CovarianceMatrix{p, T}(Λ, U, CovMat, U_inverse)
+  set_Σ!(Θ)
+  Θ
+end
+
 
 #@generated function Base.length{p,T}(::Type{CovarianceMatrix{p,T}})
 #  round(Int, p*(p+1)/2)
 #end
-function log_jacobian{p, T}(Θ::CovarianceMatrix{p, T})
-  update!(Θ)
+function log_jacobian!{p, T}(Θ::CovarianceMatrix{p, T})
+  update_U_inverse!(Θ)
   l_jac = zero(T)
   for i ∈ 1:p
     l_jac -= (p + i) * Θ.Λ[i]
@@ -150,34 +168,7 @@ function set_Σ!(Θ::CovarianceMatrix)
 end
 function update_Σ!(Θ::CovarianceMatrix)
   calc_U_from_U_inverse!(Θ)
-  update_Σ!(Θ)
-end
-
-function inv_u_test!(X::Array{Float64,2}, U::Array{Float64,2}, p = size(U,1))
-  for i ∈ 1:p
-    X[i,i] = 1 / U[i,i]
-    for j ∈ i+1:p
-      X[i,j] = U[i,j] * X[i,i]
-      for k ∈ i+1:j-1
-        X[i,j] += U[k,j] * X[i,k]
-      end
-      X[i,j] /= -U[j,j]
-    end
-  end
-end
-
-function inv_u_test2!(X::Array{Float64,2}, U::Array{Float64,2}, p = size(U,1))
-  for i ∈ 1:p
-    X[i,i] = 1 / U[i,i]
-    for j ∈ i+1:p
-      linear_index = sub2ind((p,p), i, j)
-      X[linear_index] = U[i,j] * X[i,i]
-      for k ∈ i+1:j-1
-        X[linear_index] += U[k,j] * X[i,k]
-      end
-      X[linear_index] /= -U[j,j]
-    end
-  end
+  calc_Σ!(Θ)
 end
 
 #Note, accessing the covariance matrix brings you here, where you calculate Σij; if you want access to the cached value you need to reference Θ.Σ[i,j]. Note that the cache is not updated often.
@@ -196,21 +187,7 @@ function Base.setindex!{p,T}(Θ::CovarianceMatrix{p,T}, v::T, i::Int, j::Int)
   i > j ? setindex!(Θ.Σ.data, v, j, i) : setindex!(Θ.Σ.data, v, i, j)
   set_Σ!(Θ)
 end
-function get_index{p,T}(Θ::CovarianceMatrix{p,T}, i::Int)
-  if i <= p
-    return Θ.Λ[i]
-  else
-    return Θ.U_inverse.off_diag[i - p]
-  end
-end
-function set_index!{p,T}(Θ::CovarianceMatrix{p,T}, v::T, i::Int)
-  if i <= p
-    Θ.Λ[i] = v
-    Θ.U_inverse.diag[i] = exp(v)
-  else
-    Θ.U_inverse.off_diag[i - p] = v
-  end
-end
+
 
 function quad_form(x::Vector{Real}, Θ::CovarianceMatrix)
   out = (x[1] * Θ.U_inverse.diag[1])^2
@@ -225,7 +202,7 @@ function quad_form(x::Vector{Real}, Θ::CovarianceMatrix)
   out
 end
 Base.det(U::UpperTriangle) = prod(U.diag)
-Base.logdet(U::UpperTriangle) = sum(log.(U.diag))
+Base.logdet(U::UpperTriangle) = sum(log, U.diag)
 Base.trace(U::UpperTriangle) = sum(U.diag)
 Base.det(Θ::CovarianceMatrix) = det(Θ.U_inverse)^-2
 Base.logdet(Θ::CovarianceMatrix) = 2log_root_det(Θ)
@@ -264,6 +241,7 @@ function Base.:*{p,T}(Θ_1::CovarianceMatrix{p,T}, Θ_2::CovarianceMatrix{p,T})
   Θ_1.Σ * Θ_2.Σ
 end
 function Base.show(io::IO, ::MIME"text/plain", Θ::CovarianceMatrix)
+  update_Σ!(Θ)
   println(Θ.Σ)
 end
 @generated type_length{p,T}(::Type{CovarianceMatrix{p,T}}) = round(Int, p * (p+1)/2)
@@ -275,33 +253,37 @@ function Base.convert{p,T}(::Type{Array{T,2}}, A::CovarianceMatrix{p,T})
   convert(Array{T,2}, convert(Symmetric{T,Array{T,2}}, A))
 end
 
-abstract type ConstrainedVector{p,T} <: ConstrainedParameters{p,T} end
+abstract type ConstrainedVector{p,T} <: Constrainedparameters{p,T} end
 Base.:+(x::ConstrainedVector, y::Vector) = x.x .+ y
 Base.:+(y::Vector, x::ConstrainedVector) = x.x .+ y
 Base.convert(::Type{Vector}, A::ConstrainedVector) = A.x
-get_index(x::ConstrainedVector, i::Int) = x.Θ[i]
-Base.getindex(x::ConstrainedVector, i::Int) = x.x[i]
-Base.show(io::IO, ::MIME"text/plain", Θ::ConstrainedVector) = print(io, Θ.x)
+Base.show(io::IO, ::MIME"text/plain", Θ::ConstrainedVector) = println(Θ.x)
 Base.size(x::ConstrainedVector) = size(x.x)
+Base.getindex(x::ConstrainedVector, i::Int) = x.x[i]
 
 struct PositiveVector{p, T} <: ConstrainedVector{p, T}
   Θ::SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}
   x::Vector{T}
 end
 PositiveVector{T}(x::Vector{T}) = PositiveVector{length(x), T}(log.(x), x)
-log_jacobian(x::PositiveVector) = sum(x.Θ)
-type_length{p,T}(::Type{PositiveVector{p,T}}) = p
-function set_index!(x::PositiveVector, v::Real, i::Int)
-  x.Θ[i] = v
-  x.x[i] = exp(v)
+function log_jacobian!(x::PositiveVector)
+  x.x .= exp.(x.Θ)
+  sum(x.Θ)
 end
+type_length{p,T}(::Type{PositiveVector{p,T}}) = p
+Base.getindex(x::PositiveVector, i::Int) = exp(x.Θ[i])
 function Base.setindex!(x::PositiveVector, v::Real, i::Int)
   x.x[i] = v
   x.Θ[i] = log(v)
 end
 function construct{p, T}(::Type{PositiveVector{p,T}}, Θv::Vector{T}, i::Int)
-  Θ = view(Θv, i + (1:p))
-  PositiveVector{p, T}(Θ, exp.(Θ))
+  v = view(Θv, i + (1:p))
+  PositiveVector{p, T}(v, exp.(v))
+end
+function construct{p, T}(::Type{PositiveVector{p,T}}, Θv::Vector{T}, i::Int, vals::Vector{T})
+  pv = PositiveVector{p, T}(view(Θv, i + (1:p)), vals)
+  pv.Θ .= log.(vals)
+  pv
 end
 
 logit(x::Real) = log( x / (1 - x) )
@@ -312,36 +294,45 @@ struct ProbabilityVector{p, T} <: ConstrainedVector{p, T}
   x::Vector{T}
 end
 ProbabilityVector{T}(Θ::SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}) = ProbabilityVector{length(x), T}(logit.(x), x)
-log_jacobian(x::ProbabilityVector) = sum(log.(x.x) .+ log.(1 .- x.x))
-type_length{p,T}(::Type{ProbabilityVector{p,T}}) = p
-function set_index!(x::ProbabilityVector, v::Real, i::Int)
-  x.Θ[i] = v
-  x.x[i] = logistic(v)
+function log_jacobian!(x::ProbabilityVector)
+  x.x .= logistic.(x.Θ)
+  sum(log.(x.x) .+ log.(1 .- x.x))
 end
+type_length{p,T}(::Type{ProbabilityVector{p,T}}) = p
+Base.getindex(x::ProbabilityVector, i::Int) = logistic(x.Θ[i])
 function Base.setindex!(x::ProbabilityVector, v::Real, i::Int)
   x.x[i] = v
   x.Θ[i] = logit(v)
 end
 function construct{p, T}(::Type{ProbabilityVector{p,T}}, Θv::Vector{T}, i::Int)
-  Θ = view(Θv, i + (1:p))
-  ProbabilityVector{p, T}(Θ, logistic.(Θ))
+  v = view(Θv, i + (1:p))
+  ProbabilityVector{p, T}(v, logistic.(v))
+end
+function construct{p, T}(::Type{ProbabilityVector{p,T}}, Θv::Vector{T}, i::Int, vals::Vector{T})
+  pv = ProbabilityVector{p, T}(view(Θv, i + (1:p)), vals)
+  pv.Θ .= logit.(vals)
+  pv
 end
 
-
-struct RealVector{p, T} <: Parameters{T}
-  Θ::SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}
+struct RealVector{p, T} <: parameters{T}
+  x::SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}
 end
 function Base.setindex!(x::RealVector, v::Real, i::Int)
-  x.Θ[i] = v
+  x.x[i] = v
 end
-Base.getindex(x::RealVector, i::Int) = x.Θ[i]
+
 type_length{p,T}(::Type{RealVector{p,T}}) = p
 function construct{p, T}(::Type{RealVector{p,T}}, Θ::Vector{T}, i::Int)
   RealVector{p, T}(view(Θ, i + (1:p)))
 end
-
-struct LowerBoundVector{p, T}
-  Θ::SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}
-  x::Vector{T}
-  L::Vector{T}
+function construct{p, T}(::Type{RealVector{p,T}}, Θ::Vector{T}, i::Int, vals::Vector{T})
+  rv = RealVector{p, T}(view(Θ, i + (1:p)))
+  rv.x .= vals
+  rv
 end
+
+#struct LowerBoundVector{p, T}
+#  Θ::SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}
+#  x::Vector{T}
+#  L::Vector{T}
+#end
