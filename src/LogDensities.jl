@@ -27,11 +27,14 @@ export  Data,
         inv_root_det,
         root_det,
         log_root_det,
-        trace_inverse
+        trace_inverse,
+        lpdf_InverseWishart,
+        lpdf_normal
 
 
 include("constrained_types.jl")
 include("parameter_methods.jl")
 include("model.jl")
+include("log_density_functions.jl")
 
 end # module
