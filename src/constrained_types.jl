@@ -1,9 +1,9 @@
 
 abstract type Data end
-abstract type parameters{T} <: AbstractArray{T,1} end
+abstract type parameters{T,N} <: AbstractArray{T,N} end
 
 
-abstract type Constrainedparameters{p,T} <: parameters{T} end
+abstract type Constrainedparameters{p,T,N} <: parameters{T,N} end
 log_jacobian!{T}(A::AbstractArray{T}) = zero(T)
 Base.IndexStyle(::parameters) = IndexLinear()
 
@@ -20,7 +20,7 @@ function Base.show{T <: parameters}(io::IO, Θ::T)
   end
 end
 
-abstract type SquareMatrix{p, T} <: Constrainedparameters{p, T} end
+abstract type SquareMatrix{p, T} <: Constrainedparameters{p, T, 2} end
 
 update!(Θ::Constrainedparameters) = nothing
 
@@ -30,7 +30,7 @@ update!(Θ::Constrainedparameters) = nothing
   (l, )
 end
 
-abstract type UpperTriangle{p,T} <: AbstractArray{T,1} end
+abstract type UpperTriangle{p,T} <: AbstractArray{T,2} end
 struct UpperTriangleView{p,T} <: UpperTriangle{p,T}
   diag::Vector{T}
   off_diag::SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}
@@ -142,6 +142,13 @@ function calc_Σ!(Θ::CovarianceMatrix)### When would I actually want this???
     calc_Σij!(Θ, i, j)
   end
 end
+function calc_invΣij{p,T}(Θ::CovarianceMatrix{p,T}, i::Int, j::Int)
+  out = zero(T)
+  for k ∈ i:p
+    out += Θ.U[i,k] * Θ.U[j,k]
+  end
+  out
+end
 function inv!{p,T}(U_inverse::UpperTriangle{p,T}, U::UpperTriangle{p,T})
   for i ∈ 1:p
     U_inverse.diag[i] = 1 / U.diag[i]
@@ -201,6 +208,16 @@ function quad_form(x::Vector{Real}, Θ::CovarianceMatrix)
   end
   out
 end
+function trace_AΣinv{p,T}(A::AbstractArray{<:Real}, Σ::CovarianceMatrix{p,T})
+  out = zero(T)
+  for i ∈ 1:p
+    out += A[i,i] * calc_invΣij(Σ, i, i)
+    for j ∈ 1:i
+      out += 2A[j,i] * calc_invΣij(Σ, i, j)
+    end
+  end
+  out
+end
 Base.det(U::UpperTriangle) = prod(U.diag)
 Base.logdet(U::UpperTriangle) = sum(log, U.diag)
 Base.trace(U::UpperTriangle) = sum(U.diag)
@@ -210,7 +227,14 @@ inv_det(Θ::CovarianceMatrix) = det(Θ.U_inverse)^2
 inv_root_det(Θ::CovarianceMatrix) = det(Θ.U_inverse)
 root_det(Θ::CovarianceMatrix) = 1/det(Θ.U_inverse)
 log_root_det(Θ::CovarianceMatrix) = -sum(Θ.Λ)
-trace_inverse(Θ::CovarianceMatrix) = sum(Θ.U_inverse.diag)
+negative_log_root_det(Θ::CovarianceMatrix) = sum(Θ.Λ)
+function trace_inverse{p,T}(Θ::CovarianceMatrix{p,T})
+  out = 0
+  for i ∈ 1:p
+    out += calc_invΣij(Θ, i, i)
+  end
+  out
+end
 function Base.:+(Θ::CovarianceMatrix, A::AbstractArray{Real,2})
   update_Σ!(Θ)
   Θ.Σ + y
@@ -253,9 +277,19 @@ function Base.convert{p,T}(::Type{Array{T,2}}, A::CovarianceMatrix{p,T})
   convert(Array{T,2}, convert(Symmetric{T,Array{T,2}}, A))
 end
 
-abstract type ConstrainedVector{p,T} <: Constrainedparameters{p,T} end
+abstract type ConstrainedVector{p,T} <: Constrainedparameters{p,T,1} end
 Base.:+(x::ConstrainedVector, y::Vector) = x.x .+ y
 Base.:+(y::Vector, x::ConstrainedVector) = x.x .+ y
+Base.:+(x::ConstrainedVector, y::Real) = x.x .+ y
+Base.:+(y::Real, x::ConstrainedVector) = x.x .+ y
+Base.:+(y::ConstrainedVector, x::ConstrainedVector) = x.x .+ y.x
+Base.:-(x::ConstrainedVector, y::Vector) = x.x .- y
+Base.:-(y::Vector, x::ConstrainedVector) = y .- x.x
+Base.:-(x::ConstrainedVector, y::Real) = x.x .- y
+Base.:-(y::Real, x::ConstrainedVector) = y .- x.x
+Base.:-(x::ConstrainedVector, y::ConstrainedVector) = x.x .- y.x
+Base.:*(A::AbstractArray{<:Real,2}, x::ConstrainedVector) = A * x.x
+Base.:*(x::ConstrainedVector, A::AbstractArray{<:Real,2}) = x.x * A
 Base.convert(::Type{Vector}, A::ConstrainedVector) = A.x
 Base.show(io::IO, ::MIME"text/plain", Θ::ConstrainedVector) = println(Θ.x)
 Base.size(x::ConstrainedVector) = size(x.x)
@@ -314,12 +348,13 @@ function construct{p, T}(::Type{ProbabilityVector{p,T}}, Θv::Vector{T}, i::Int,
   pv
 end
 
-struct RealVector{p, T} <: parameters{T}
+struct RealVector{p, T} <: ConstrainedVector{p, T}
   x::SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}
 end
 function Base.setindex!(x::RealVector, v::Real, i::Int)
   x.x[i] = v
 end
+@generated log_jacobian!{T}(x::RealVector{T}) = zero(T)
 
 type_length{p,T}(::Type{RealVector{p,T}}) = p
 function construct{p, T}(::Type{RealVector{p,T}}, Θ::Vector{T}, i::Int)
