@@ -36,5 +36,6 @@ include("constrained_types.jl")
 include("parameter_methods.jl")
 include("model.jl")
 include("log_density_functions.jl")
+include("models.jl")
 
 end # module

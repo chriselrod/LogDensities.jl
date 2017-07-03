@@ -354,7 +354,7 @@ end
 function Base.setindex!(x::RealVector, v::Real, i::Int)
   x.x[i] = v
 end
-@generated log_jacobian!{T}(x::RealVector{T}) = zero(T)
+@generated log_jacobian!{p, T}(x::RealVector{p, T}) = zero(T)
 
 type_length{p,T}(::Type{RealVector{p,T}}) = p
 function construct{p, T}(::Type{RealVector{p,T}}, Θ::Vector{T}, i::Int)
@@ -365,6 +365,26 @@ function construct{p, T}(::Type{RealVector{p,T}}, Θ::Vector{T}, i::Int, vals::V
   rv.x .= vals
   rv
 end
+
+struct Buffer{p,T,N} <: Constrainedparameters{p,T,N}
+  x::Array{T,N}
+end
+function Base.getindex(x::Buffer, i::Int)
+  x.x[i]
+end
+function Base.setindex!(x::Buffer, v::Real, i::Int)
+  x.x[i] = v
+end
+@generated log_jacobian!{p,T,N}(x::Buffer{p,T,N}) = zero(T)
+
+type_length(::Type{Buffer}) = 0
+@generated function construct{p, T, N}(::Type{Buffer{p,T,N}}, Θ::Vector{T}, i::Int)
+  Buffer{p,T,N}(Array{T,N}(fill(p,N)...))
+end
+function construct{p, T, N}(::Type{Buffer{p,T,N}}, Θ::Vector{T}, i::Int, vals::Array{T,N})
+  Buffer{p,T,N}(vals)
+end
+
 
 #struct LowerBoundVector{p, T}
 #  Θ::SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}
