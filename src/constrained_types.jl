@@ -30,6 +30,10 @@ update!(Θ::Constrainedparameters) = nothing
   (l, )
 end
 
+function Base.size{p}(A::SquareMatrix{p,<:Real})
+  (p, p)
+end
+
 abstract type UpperTriangle{p,T} <: AbstractArray{T,2} end
 struct UpperTriangleView{p,T} <: UpperTriangle{p,T}
   diag::Vector{T}
@@ -43,6 +47,9 @@ Base.IndexStyle(::UpperTriangle) = IndexLinear()
 Base.getindex(A::UpperTriangle, i::Int) = A.off_diag[i]
 function Base.setindex!(A::UpperTriangle, v, i::Int)
   A.off_diag[i] = v
+end
+function Base.size{p}(::UpperTriangle{p,Float64})
+  (p,p)
 end
 sub2triangle(i_1::Int, i_2::Int) = i_1 + round(Int, i_2*(i_2-1)/2)
 function Base.getindex(A::UpperTriangle, i_1::Int, i_2::Int)
@@ -81,8 +88,8 @@ function update_U_inverse!(Θ::CovarianceMatrix)
 end
 function construct{p, T}(A::Type{CovarianceMatrix{p,T}}, Θv::Vector{T}, i::Int)
   Λ = view(Θv, i + (1:p))
-  U = UpperTriangleVector(Array{T}(p), Array{T}(round(Int,p*(p-1)/2)))
-  U_inverse = UpperTriangleView(exp.(Λ), view(Θv, i + (1+p:length(A))))
+  U = UpperTriangleVector{p,T}(Array{T}(p), Array{T}(round(Int,p*(p-1)/2)))
+  U_inverse = UpperTriangleView{p,T}(exp.(Λ), view(Θv, i + (1+p:type_length(A))))
   CovarianceMatrix{p, T}(Λ, U, Symmetric(Array{T}(p,p)), U_inverse)
 end
 function construct{p, T}(A::Type{CovarianceMatrix{p,T}}, Θv::Vector{T}, i::Int, CovMat::Array{T,2})
@@ -93,8 +100,8 @@ function construct{p, T}(A::Type{CovarianceMatrix{p,T}}, Θv::Vector{T}, i::Int,
     CovMat = Symmetric(CovMat.data')
   end
   Λ = view(Θv, i + (1:p))
-  U = UpperTriangleVector(Array{T}(p), Array{T}(round(Int,p*(p-1)/2)))
-  U_inverse = UpperTriangleView(exp.(Λ), view(Θv, i + (1+p:length(A))))
+  U = UpperTriangleVector{p,T}(Array{T}(p), Array{T}(round(Int,p*(p-1)/2)))
+  U_inverse = UpperTriangleView{p,T}(exp.(Λ), view(Θv, i + (1+p:type_length(A))))
   Θ = CovarianceMatrix{p, T}(Λ, U, CovMat, U_inverse)
   set_Σ!(Θ)
   Θ
@@ -116,12 +123,12 @@ function chol!{p,T}(U::UpperTriangle{p,T}, Σ::Symmetric{T,Array{T, 2}})
   for i ∈ 1:p
     U[i,i] = Σ[i,i]
     for j ∈ 1:i-1
-      U[i,i] -= U[j,i]^2
       U[j,i] = Σ[j,i]
       for k ∈ 1:j-1
         U[j,i] -= U[k,i] * U[k,j]
       end
       U[j,i] /= U[j,j]
+      U[i,i] -= U[j,i]^2
     end
     U[i,i] = √U[i,i]
   end
@@ -131,13 +138,13 @@ function calc_U_from_Σ!{p,T}(Θ::CovarianceMatrix{p, T})
   chol!(Θ.U, Θ.Σ)
 end
 function calc_Σij!(Θ::CovarianceMatrix, i::Int, j::Int)
-  Θ.Σ[j,i] = Θ.U[1,i] * Θ.U[1,j]
+  Θ.Σ.data[j,i] = Θ.U[1,i] * Θ.U[1,j]
   for k ∈ 2:j
-    Θ.Σ[j,i] += Θ.U[k,i] * Θ.U[k,j]
+    Θ.Σ.data[j,i] += Θ.U[k,i] * Θ.U[k,j]
   end
-  Θ.Σ[i,j] = Θ.Σ[j,i]
+  Θ.Σ.data[j,i]
 end
-function calc_Σ!(Θ::CovarianceMatrix)### When would I actually want this???
+function calc_Σ!{p}(Θ::CovarianceMatrix{p,<:Real})### When would I actually want this???
   for i ∈ 1:p, j ∈ 1:i
     calc_Σij!(Θ, i, j)
   end
@@ -145,7 +152,7 @@ end
 function calc_invΣij{p,T}(Θ::CovarianceMatrix{p,T}, i::Int, j::Int)
   out = zero(T)
   for k ∈ i:p
-    out += Θ.U[i,k] * Θ.U[j,k]
+    out += Θ.U_inverse[i,k] * Θ.U_inverse[j,k]
   end
   out
 end
@@ -180,10 +187,10 @@ end
 
 #Note, accessing the covariance matrix brings you here, where you calculate Σij; if you want access to the cached value you need to reference Θ.Σ[i,j]. Note that the cache is not updated often.
 function Base.getindex(Θ::CovarianceMatrix, i::Int, j::Int)
-  i > j ? calc_Σij(i, j) : calc_Σij(j, i)
+  i > j ? calc_Σij!(Θ,i, j) : calc_Σij!(Θ,j, i)
 end
 function Base.getindex{p,T}(Θ::CovarianceMatrix{p,T}, k::Int)
-  Θ[ind2sub((p,p), k)]
+  Θ[ind2sub((p,p), k)...]
 end
 #Strongly discouraged from calling the following method. But...if you have to, it is here.
 function Base.setindex!{p,T}(Θ::CovarianceMatrix{p,T}, v::T, k::Int)
@@ -209,11 +216,14 @@ function quad_form(x::Vector{Real}, Θ::CovarianceMatrix)
   out
 end
 function trace_AΣinv{p,T}(A::AbstractArray{<:Real}, Σ::CovarianceMatrix{p,T})
+  2*htrace_AΣinv(A,Σ)
+end
+function htrace_AΣinv{p,T}(A::AbstractArray{<:Real}, Σ::CovarianceMatrix{p,T})
   out = zero(T)
   for i ∈ 1:p
-    out += A[i,i] * calc_invΣij(Σ, i, i)
-    for j ∈ 1:i
-      out += 2A[j,i] * calc_invΣij(Σ, i, j)
+    out += A[i,i] * calc_invΣij(Σ, i, i) / 2
+    for j ∈ 1:i-1
+      out += A[j,i] * calc_invΣij(Σ, i, j)
     end
   end
   out
@@ -222,12 +232,12 @@ Base.det(U::UpperTriangle) = prod(U.diag)
 Base.logdet(U::UpperTriangle) = sum(log, U.diag)
 Base.trace(U::UpperTriangle) = sum(U.diag)
 Base.det(Θ::CovarianceMatrix) = det(Θ.U_inverse)^-2
-Base.logdet(Θ::CovarianceMatrix) = 2log_root_det(Θ)
+Base.logdet(Θ::CovarianceMatrix) = 2hlogdet(Θ)
 inv_det(Θ::CovarianceMatrix) = det(Θ.U_inverse)^2
 inv_root_det(Θ::CovarianceMatrix) = det(Θ.U_inverse)
 root_det(Θ::CovarianceMatrix) = 1/det(Θ.U_inverse)
-log_root_det(Θ::CovarianceMatrix) = -sum(Θ.Λ)
-negative_log_root_det(Θ::CovarianceMatrix) = sum(Θ.Λ)
+hlogdet(Θ::CovarianceMatrix) = -sum(Θ.Λ)
+nhlogdet(Θ::CovarianceMatrix) = sum(Θ.Λ)
 function trace_inverse{p,T}(Θ::CovarianceMatrix{p,T})
   out = 0
   for i ∈ 1:p
@@ -237,7 +247,7 @@ function trace_inverse{p,T}(Θ::CovarianceMatrix{p,T})
 end
 function Base.:+(Θ::CovarianceMatrix, A::AbstractArray{Real,2})
   update_Σ!(Θ)
-  Θ.Σ + y
+  Θ.Σ + A
 end
 function Base.:+(A::AbstractArray{Real,2}, Θ::CovarianceMatrix)
   update_Σ!(Θ)
@@ -320,8 +330,7 @@ function construct{p, T}(::Type{PositiveVector{p,T}}, Θv::Vector{T}, i::Int, va
   pv
 end
 
-logit(x::Real) = log( x / (1 - x) )
-logistic(x::Real) = 1 / ( 1 + exp( - x ) )
+
 
 struct ProbabilityVector{p, T} <: ConstrainedVector{p, T}
   Θ::SubArray{T,1,Array{T,1},Tuple{UnitRange{Int64}},true}
