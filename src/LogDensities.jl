@@ -1,6 +1,6 @@
 module LogDensities
 
-using SparseQuadratureGrids
+using SparseQuadratureGrids, TensorOperations, StaticArrays
 
 import  Base.show,
         Base.getindex,
@@ -31,7 +31,7 @@ export  Data,
         lpdf_InverseWishart,
         lpdf_normal
 
-
+include("helper_functions.jl")
 include("constrained_types.jl")
 include("parameter_methods.jl")
 include("model.jl")
