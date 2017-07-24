@@ -32,6 +32,12 @@ end
   expr
 end
 
+function update!{T <: parameters}(A::T)
+  for i ∈ 2:length(T.types)
+    update!(getfield(A, i))
+  end
+end
+
 
 @generated function construct{T <: parameters}(::Type{T})
   if isa(T, UnionAll)
@@ -41,7 +47,7 @@ end
   end
   field_count = length(T2.types)
   indices = cumsum([type_length(T2.types[i]) for i ∈ 1:field_count])
-  Θ = zeros(T2.parameters[1], indices[end])
+  Θ = zeros(T2.parameters[end], indices[end])
 
   Expr(:call, T2, Θ, [construct(T2.types[i+1], Θ, indices[i]) for i ∈ 1:field_count-1]...)
 end
@@ -51,7 +57,7 @@ function construct{T <: parameters}(::Type{T}, A::Vararg)
 
   field_count = length(T.types)
   indices = cumsum([type_length(T.types[i]) for i ∈ 1:field_count])
-  Θ = zeros(T.parameters[1], indices[end])
+  Θ = zeros(T.parameters[end], indices[end])
 
   eval(Expr(:call, T, Θ, [construct(T.types[i+1], Θ, indices[i], A[i]) for i ∈ 1:field_count-1]...))
 end
@@ -71,6 +77,7 @@ function negative_log_density{T, P <: parameters}(Θ::Vector{T}, ::Type{P}, data
   nld - Main.log_density(param, data)
 end
 function negative_log_density!(Θ::parameters, data::Data)
+#  update!(Θ)
   nld = -log_jacobian!(Θ)
   nld - Main.log_density(Θ, data)
 end
