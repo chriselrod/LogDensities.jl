@@ -1,6 +1,6 @@
 module LogDensities
 
-using SparseQuadratureGrids, TensorOperations, StaticArrays
+using SparseQuadratureGrids, StaticArrays, ConstrainedParameters
 
 import  Base.show,
         Base.getindex,
@@ -9,7 +9,11 @@ import  Base.show,
         Base.IndexStyle,
         Base.+,
         Base.*,
-        Base.convert
+        Base.convert,
+        ConstrainedParameters.type_length,
+        ConstrainedParameters.construct,
+        ConstrainedParameters.log_jacobian!,
+        ConstrainedParameters.update!
 
 export  Data,
         parameters,
@@ -29,13 +33,13 @@ export  Data,
         log_root_det,
         trace_inverse,
         lpdf_InverseWishart,
-        lpdf_normal
+        lpdf_normal,
+        logit,
+        logistic,
+        update!,
+        type_length
 
-include("helper_functions.jl")
-include("constrained_types.jl")
 include("parameter_methods.jl")
 include("model.jl")
-include("log_density_functions.jl")
-include("models.jl")
 
 end # module
