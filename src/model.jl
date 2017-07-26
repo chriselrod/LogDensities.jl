@@ -1,15 +1,15 @@
 
 
 struct Model{p, q <: QuadratureRule, P <: parameters{Float64}}
-  Grid::SplitWeights{p, q}
+  Grid::GridContainer{p,q}
   Θ::P
   UA::UnionAll
 end
 
 
-function Model{P <: parameters}(::Type{P}; l = 6, q::DataType = GenzKeister, seq::Vector{Int} = SparseQuadratureGrids.default(q))
+function Model{P <: parameters}(::Type{P}; l::Int = 6, q::DataType = GenzKeister, seq::Vector{Int} = SparseQuadratureGrids.default(q))
   Θ = construct(P{Float64})
-  Grid = SplitWeights(length(Θ), l, q, seq)
+  Grid = GridContainer(length(Θ), l, q, seq)
   Model(Grid, Θ, P)
 end
 
