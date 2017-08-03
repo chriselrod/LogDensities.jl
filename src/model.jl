@@ -7,7 +7,7 @@ struct Model{p, q <: QuadratureRule, P <: parameters{Float64}}
 end
 
 
-function Model{P <: parameters}(::Type{P}; l::Int = 6, q::DataType = GenzKeister, seq::Vector{Int} = SparseQuadratureGrids.default(q))
+function Model(::Type{P}; l::Int = 6, grid_build::GridBuild{q} = AdaptiveBuild{GenzKeister}) where {P <: parameters, q}
   Θ = construct(P{Float64})
   Grid = GridContainer(length(Θ), l, q, seq)
   Model(Grid, Θ, P)
