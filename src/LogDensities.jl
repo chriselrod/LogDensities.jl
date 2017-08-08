@@ -13,7 +13,9 @@ import  Base.show,
         ConstrainedParameters.type_length,
         ConstrainedParameters.construct,
         ConstrainedParameters.log_jacobian!,
-        ConstrainedParameters.update!
+        ConstrainedParameters.update!,
+        ConstrainedParameters.Val,
+        ConstrainedParameters.param_type_length
 
 export  Data,
         parameters,

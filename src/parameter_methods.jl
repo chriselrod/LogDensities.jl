@@ -1,4 +1,4 @@
-
+struct Val{p} end
 
 @generated function Base.size(A::T) where {T <: parameters}
   p = 0
@@ -14,6 +14,14 @@ end
     p += type_length(i)
   end
   p
+end
+#Perhaps confusingly, while "ConstrainedParameters.param_type_length" functions return ConstrainedParameters.Val{p}, this returns SparseQuadratureGrids.Val{p}.
+@generated function param_type_length(::Type{T}) where {T <: parameters}
+  p = 0
+  for i ∈ T.types
+    p += type_length(i)
+  end
+  SparseQuadratureGrids.Val{p}
 end
 
 function Base.getindex(A::parameters, i::Int)
