@@ -1,5 +1,3 @@
-struct Val{p} end
-
 @generated function Base.size(A::T) where {T <: parameters}
   p = 0
   for i ∈ T.types
@@ -77,10 +75,6 @@ function construct(::Type{T}, Θ::Vector) where {T <: parameters}
   eval(Expr(:call, T, Θ, [construct(T.types[i+1], Θ, indices[i]) for i ∈ 1:field_count-1]...))
 end
 
-julia> struct ts{T, B <: AbstractArray{T}}
-           t::T
-           v::B
-       end
 
 function negative_log_density(Θ::Vector{T}, ::Type{P}, data::Data) where {T, P <: parameters}
   param = construct(P{T}, Θ)

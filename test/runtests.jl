@@ -30,7 +30,7 @@ end
 p = 2
 m1 = Model(TestObj{p})
 @testset begin
-  @test type_length(m1.UA{Float64}) == length(m1.Θ) == length(m1.Θ.x) == round(Int, p*(3 + (p+1)/2))
+  @test type_length(typeof(m1.Θ)) == length(m1.Θ) == length(m1.Θ.x) == round(Int, p*(3 + (p+1)/2))
 
   x = randn(length(m1.Θ))
   copy!(m1.Θ.x, x)

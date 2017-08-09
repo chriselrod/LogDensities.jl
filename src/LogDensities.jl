@@ -11,11 +11,11 @@ import  Base.show,
         Base.*,
         Base.convert,
         ConstrainedParameters.type_length,
+        ConstrainedParameters.param_type_length,
         ConstrainedParameters.construct,
         ConstrainedParameters.log_jacobian!,
         ConstrainedParameters.update!,
-        ConstrainedParameters.Val,
-        ConstrainedParameters.param_type_length
+        ConstrainedParameters.Val
 
 export  Data,
         parameters,
@@ -39,7 +39,14 @@ export  Data,
         logit,
         logistic,
         update!,
-        type_length
+        type_length,
+        ModelRank,
+        StaticRank,
+        DynamicRank,
+        Full,
+        FixedRank,
+        LDR,
+        Dynamic
 
 include("parameter_methods.jl")
 include("model.jl")
