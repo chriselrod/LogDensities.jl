@@ -21,8 +21,8 @@ complete(a::Type{<:StaticRank{p} where p},::Type{P} where {P <: parameters}) = a
 complete(a::Type{<:LDR{g} where g},::Type{P} where {P <: parameters}) = a
 K(::Type{<:DynamicRank}, ::Type{<:AdaptiveBuild}) = Tuple{Int,Int,Int}
 K(::Type{<:StaticRank}, ::Type{<:AdaptiveBuild}) = Tuple{Int,Int}
-K(::Type{<:DynamicRank}, ::Type{<:aPrioriBuild}) = Tuple{Int,Int,Vector{Int}}
-K(::Type{<:StaticRank}, ::Type{<:aPrioriBuild}) = Tuple{Int,Vector{Int}}
+K(::Type{<:DynamicRank}, ::Type{<:aPrioriBuild}) = Tuple{Int,Vector{Int}}
+K(::Type{<:StaticRank}, ::Type{<:aPrioriBuild}) = Vector{Int}
 
 #### Idea here is to call model and perform a static dispatch, thanks to parameterizing everything deciding the dispach.
 #### Resulting object will be one of several different model types.
@@ -34,12 +34,12 @@ Model(Grid::G, Θ::PF, ::Type{P}, ::Type{R}) where {G, PF, P, R} = Model{G, PF, 
 
 function Model(::Type{P}, ::Type{R} = FullVal(param_type_length(P{Float64}))) where {P <: parameters, R <: StaticRank}
   Θ = construct(P{Float64})
-  Grid = StaticGridVessel(GenzKeister, Adaptive{GenzKeister}, K(R,Adaptive{GenzKeister}), param_type_length(P{Float64}))
+  Grid = StaticGridVessel(GenzKeister, AdaptiveRaw{GenzKeister}, K(R,AdaptiveRaw{GenzKeister}), param_type_length(P{Float64}))
   Model(Grid, Θ, P, complete(R,P{Float64}))
 end
 function Model(::Type{P}, ::Type{R}) where {P <: parameters, R <: DynamicRank}
   Θ = construct(P{Float64})
-  Grid = DynamicGridVessel(GenzKeister, Adaptive{GenzKeister}, K(R,Adaptive{GenzKeister}), param_type_length(P{Float64}))
+  Grid = DynamicGridVessel(GenzKeister, AdaptiveRaw{GenzKeister}, K(R,AdaptiveRaw{GenzKeister}), param_type_length(P{Float64}))
   Model(Grid, Θ, P, complete(R,P{Float64}))
 end
 function Model(::Type{P}, ::Type{B}, ::Type{R} = FullVal(param_type_length(P{Float64}))) where {q, B <: GridBuild{q}, P <: parameters, R <: StaticRank}
