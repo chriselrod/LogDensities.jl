@@ -10,12 +10,12 @@ import  Base.show,
         Base.+,
         Base.*,
         Base.convert,
+        Base.Val,
         ConstrainedParameters.type_length,
         ConstrainedParameters.param_type_length,
         ConstrainedParameters.construct,
         ConstrainedParameters.log_jacobian!,
-        ConstrainedParameters.update!,
-        ConstrainedParameters.Val
+        ConstrainedParameters.update!
 
 export  Data,
         parameters,

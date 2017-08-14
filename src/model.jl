@@ -5,10 +5,12 @@ struct Full{p} <: StaticRank{p} end
 struct FixedRank{p} <: StaticRank{p} end
 struct Dynamic <: DynamicRank end
 struct LDR{g} <: DynamicRank end
-struct Model{G <: GridVessel, PF <: parameters, P <: parameters, R <: ModelRank}
+struct Model{G <: GridVessel, PF <: parameter, P <: Tuple, R <: ModelRank}
   Grid::G
   Θ::PF
+  ϕ::P
 end
+
 
 val_to_rank(::Type{SparseQuadratureGrids.Val{p}},::Type{R}) where {p, R <: StaticRank} = R{p}
 FullVal(::Type{SparseQuadratureGrids.Val{p}}) where p = Full{p}
@@ -29,28 +31,28 @@ K(::Type{<:StaticRank}, ::Type{<:aPrioriBuild}) = Vector{Int}
 #### Don't need a single model shell
 
 
-Model(Grid::G, Θ::PF, ::Type{P}, ::Type{R}) where {G, PF, P, R} = Model{G, PF, P, R}(Grid, Θ)
+Model(Grid::G, Θ::PF, ϕ::P, ::Type{R}) where {G, PF, P, R} = Model{G, PF, P, R}(Grid, Θ, ϕ)
 
 
-function Model(::Type{P}, ::Type{R} = FullVal(param_type_length(P{Float64}))) where {P <: parameters, R <: StaticRank}
-  Θ = construct(P{Float64})
+function Model(ϕ::P, ::Type{R} = FullVal(param_type_length(P{Float64}))) where {P <: Tuple, R <: StaticRank}
+  Θ = construct(ϕ)
   Grid = StaticGridVessel(GenzKeister, AdaptiveRaw{GenzKeister}, K(R,AdaptiveRaw{GenzKeister}), param_type_length(P{Float64}))
-  Model(Grid, Θ, P, complete(R,P{Float64}))
+  Model(Grid, Θ, ϕ, complete(R,P{Float64}))
 end
-function Model(::Type{P}, ::Type{R}) where {P <: parameters, R <: DynamicRank}
-  Θ = construct(P{Float64})
+function Model(ϕ::P, ::Type{R}) where {P <: Tuple, R <: DynamicRank}
+  Θ = construct(P)
   Grid = DynamicGridVessel(GenzKeister, AdaptiveRaw{GenzKeister}, K(R,AdaptiveRaw{GenzKeister}), param_type_length(P{Float64}))
-  Model(Grid, Θ, P, complete(R,P{Float64}))
+  Model(Grid, Θ, ϕ, complete(R,P{Float64}))
 end
-function Model(::Type{P}, ::Type{B}, ::Type{R} = FullVal(param_type_length(P{Float64}))) where {q, B <: GridBuild{q}, P <: parameters, R <: StaticRank}
-  Θ = construct(P{Float64})
+function Model(ϕ::P, ::Type{B}, ::Type{R} = FullVal(param_type_length(P{Float64}))) where {q, B <: GridBuild{q}, P <: Tuple, R <: StaticRank}
+  Θ = construct(P)
   Grid = StaticGridVessel(q, B, K(R,B), param_type_length(P{Float64}))
-  Model(Grid, Θ, P, complete(R,P{Float64}))
+  Model(Grid, Θ, ϕ, complete(R,P{Float64}))
 end
-function Model(::Type{P}, ::Type{B}, ::Type{R}) where {q, B <: GridBuild{q}, P <: parameters, R <: DynamicRank}
-  Θ = construct(P{Float64})
+function Model(ϕ::P, ::Type{B}, ::Type{R}) where {q, B <: GridBuild{q}, P <: Tuple, R <: DynamicRank}
+  Θ = construct(P)
   Grid = DynamicGridVessel(q, B, K(R,B), param_type_length(P{Float64}))
-  Model(Grid, Θ, P, complete(R,P{Float64}))
+  Model(Grid, Θ, ϕ, complete(R,P{Float64}))
 end
 
 function Base.show(io::IO, ::MIME"text/plain", m::Model)
