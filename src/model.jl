@@ -5,22 +5,29 @@ struct Full{p} <: StaticRank{p} end
 struct FixedRank{p} <: StaticRank{p} end
 struct Dynamic <: DynamicRank end
 struct LDR{g} <: DynamicRank end
-struct Model{G <: GridVessel, PF <: parameter, P <: Tuple, R <: ModelRank}
+struct Model{G <: GridVessel, MP <: ModelParam, P <: Tuple, R <: ModelRank}
   Grid::G
-  Θ::PF
+  Θ::MP
   ϕ::P
+  opt_cache::Vector{Float64}
 end
 
+#Commented out model options instead of deleting it, to serve as a reminder.
+#It would probably be a relatively convenient API change.
+#struct ModelOptions{R <: ModelRank, T <: Bool}
+#    MR::R
+#    cache::Val{T}
+#end
+#function ModelOptions(; MR = Full())
+#
+#end
 
-val_to_rank(::Type{SparseQuadratureGrids.Val{p}},::Type{R}) where {p, R <: StaticRank} = R{p}
-FullVal(::Type{SparseQuadratureGrids.Val{p}}) where p = Full{p}
-FixedRankVal(::Type{SparseQuadratureGrids.Val{p}}) where p = FixedRank{p}
-default(::Type{R},::Type{P}) where {P <: parameters, R <: StaticRank} = val_to_rank(param_type_length(P), R)
-default(::Type{LDR},::Type{P} where {P <: parameters}) = LDR(0.999)
-complete(a::Type{UnionAll},::Type{P}) where {P <: parameters} = default(a,P)
-complete(a::Type{Dynamic},::Type{P} where {P <: parameters}) = a
-complete(a::Type{<:StaticRank{p} where p},::Type{P} where {P <: parameters}) = a
-complete(a::Type{<:LDR{g} where g},::Type{P} where {P <: parameters}) = a
+
+complete(::Type{LDR},::P where P <: ModelParam) = LDR{0.999}
+complete(::Type{LDR{g}},::P where P <: ModelParam) where g = LDR{g}
+complete(::Type{R},::P) where {p, P <: ModelParam{p}, R <: StaticRank} = R{p}
+complete(::Type{Dynamic},::P where {P <: ModelParam}) = Dynamic
+complete(::Type{R},::P where {P <: ModelParam}) where {p, R <: StaticRank{p}} = R
 K(::Type{<:DynamicRank}, ::Type{<:AdaptiveBuild}) = Tuple{Int,Int,Int}
 K(::Type{<:StaticRank}, ::Type{<:AdaptiveBuild}) = Tuple{Int,Int}
 K(::Type{<:DynamicRank}, ::Type{<:aPrioriBuild}) = Tuple{Int,Vector{Int}}
@@ -31,29 +38,42 @@ K(::Type{<:StaticRank}, ::Type{<:aPrioriBuild}) = Vector{Int}
 #### Don't need a single model shell
 
 
-Model(Grid::G, Θ::PF, ϕ::P, ::Type{R}) where {G, PF, P, R} = Model{G, PF, P, R}(Grid, Θ, ϕ)
 
+Base.@pure SmallModel(::Type{Val{p}}) where p = Val{p < 13}
 
-function Model(ϕ::P, ::Type{R} = FullVal(param_type_length(P{Float64}))) where {P <: Tuple, R <: StaticRank}
-  Θ = construct(ϕ)
-  Grid = StaticGridVessel(GenzKeister, AdaptiveRaw{GenzKeister}, K(R,AdaptiveRaw{GenzKeister}), param_type_length(P{Float64}))
-  Model(Grid, Θ, ϕ, complete(R,P{Float64}))
+function Model(ϕ::Tuple, ::Type{B} = AdaptiveRaw{GenzKeister}, ::Type{R} = Full) where {R <: ModelRank, B <: RawBuild}
+    Θ = construct(ϕ)
+    Model(Θ, ϕ, complete(R, Θ), B)
 end
-function Model(ϕ::P, ::Type{R}) where {P <: Tuple, R <: DynamicRank}
-  Θ = construct(P)
-  Grid = DynamicGridVessel(GenzKeister, AdaptiveRaw{GenzKeister}, K(R,AdaptiveRaw{GenzKeister}), param_type_length(P{Float64}))
-  Model(Grid, Θ, ϕ, complete(R,P{Float64}))
+function Model(ϕ::Tuple, ::Type{B}, ::Type{R} = Full) where {R <: ModelRank, B <: CacheBuild}
+    Θ = sconstruct(ϕ)
+    Model(Θ, ϕ, complete(R, Θ), B)
 end
-function Model(ϕ::P, ::Type{B}, ::Type{R} = FullVal(param_type_length(P{Float64}))) where {q, B <: GridBuild{q}, P <: Tuple, R <: StaticRank}
-  Θ = construct(P)
-  Grid = StaticGridVessel(q, B, K(R,B), param_type_length(P{Float64}))
-  Model(Grid, Θ, ϕ, complete(R,P{Float64}))
+function Model(θ::MP, ϕ::Tuple, ::Type{R}, ::Type{B}) where {p, MP <: ModelParam{p}, R <: StaticRank, B}
+    Model(θ, ϕ, R, B, SmallModel(Val{p}))
 end
-function Model(ϕ::P, ::Type{B}, ::Type{R}) where {q, B <: GridBuild{q}, P <: Tuple, R <: DynamicRank}
-  Θ = construct(P)
-  Grid = DynamicGridVessel(q, B, K(R,B), param_type_length(P{Float64}))
-  Model(Grid, Θ, ϕ, complete(R,P{Float64}))
+function Model(θ::MP, ϕ::Tuple, ::Type{R}, ::Type{B}, ::Type{Val{true}}) where {p, d, MP <: ModelParam{p}, R <: StaticRank{d}, q, B <: RawBuild{q}}
+    Grid = DynamicGridVessel(q, B, K(R, B), Val{p}, Vector{SVector{d, Float64}}, MatrixVecSVec{p, Float64})
+    Model( Grid, θ, ϕ, R )
 end
+function Model(θ::MP, ϕ::Tuple, ::Type{R}, ::Type{B}, ::Type{Val{true}}) where {p, d, MP <: ModelParam{p}, R <: StaticRank{d}, q, B <: CacheBuild{q}}
+    Grid = DynamicGridVessel(q, B, K(R, B), Val{p}, Vector{SVector{d, Float64}}, Vector{SVector{p, Float64}})
+    Model( Grid, θ, ϕ, R )
+end
+
+function Model(θ::MP, ϕ::Tuple, ::Type{R}, ::Type{B}, ::Type{V}) where {p, MP <: ModelParam{p}, R <: ModelRank, q, B <: RawBuild{q}, V <: Val}
+    Grid = DynamicGridVessel(q, B, K(R, B), Val{p}, Matrix{Float64}, Matrix{Float64})
+    Model( Grid, θ, ϕ, R )
+end
+function Model(θ::MP, ϕ::Tuple, ::Type{R}, ::Type{B}, ::Type{V}) where {p, MP <: ModelParam{p}, R <: ModelRank, q, B <: CacheBuild{q}, V <: Val}
+    Grid = DynamicGridVessel(q, B, K(R, B), Val{p}, Matrix{Float64}, MatrixVecSVec{p, Float64})
+    Model( Grid, θ, ϕ, R )
+end
+
+function Model(Grid::G, Θ::MP, ϕ::P, ::Type{R}) where {p, G, MP <: ModelParam{p}, P, R}
+    Model{G, MP, P, R}(Grid, Θ, ϕ, zeros(p))
+end
+
 
 function Base.show(io::IO, ::MIME"text/plain", m::Model)
   print(m.Θ)
