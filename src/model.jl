@@ -71,8 +71,10 @@ function Model(θ::MP, ϕ::Tuple, ::Type{R}, ::Type{B}, ::Type{V}) where {p, MP 
 end
 
 function Model(Grid::G, Θ::MP, ϕ::P, ::Type{R}) where {p, G, MP <: ModelParam{p}, P, R}
-    Model{G, MP, P, R}(Grid, Θ, ϕ, zeros(p))
+    Model{G, MP, P, R}(Grid, Θ, ϕ, zeros(p), Dict{Tuple{Function,Int},MarginalCache}())
 end
+
+MarginalCache(M::Model, f::Function, n::Int) = get!( () -> MarginalCache(n), m.mc, (f, n) )
 
 
 function Base.show(io::IO, ::MIME"text/plain", m::Model)

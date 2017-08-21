@@ -47,8 +47,10 @@ export  Data,
         Full,
         FixedRank,
         LDR,
-        Dynamic
+        Dynamic,
+        MarginalCache
 
+include("model_utilities.jl")
 include("parameter_methods.jl")
 include("model.jl")
 
