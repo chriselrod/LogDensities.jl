@@ -10,6 +10,7 @@ struct Model{G <: GridVessel, MP <: ModelParam, P <: Tuple, R <: ModelRank}
   Θ::MP
   ϕ::P
   opt_cache::Vector{Float64}
+  MarginalBuffers::Dict{Function,MarginalBuffer}
 end
 
 #Commented out model options instead of deleting it, to serve as a reminder.
@@ -71,7 +72,7 @@ function Model(θ::MP, ϕ::Tuple, ::Type{R}, ::Type{B}, ::Type{V}) where {p, MP 
 end
 
 function Model(Grid::G, Θ::MP, ϕ::P, ::Type{R}) where {p, G, MP <: ModelParam{p}, P, R}
-    Model{G, MP, P, R}(Grid, Θ, ϕ, zeros(p), Dict{Tuple{Function,Int},MarginalCache}())
+    Model{G, MP, P, R}(Grid, Θ, ϕ, zeros(p), Dict{Function,MarginalCache}())
 end
 
 MarginalCache(M::Model, f::Function, n::Int) = get!( () -> MarginalCache(n), m.mc, (f, n) )
