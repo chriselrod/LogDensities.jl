@@ -5,12 +5,15 @@ struct Full{p} <: StaticRank{p} end
 struct FixedRank{p} <: StaticRank{p} end
 struct Dynamic <: DynamicRank end
 struct LDR{g} <: DynamicRank end
-struct Model{G <: GridVessel, MP <: ModelParam, P <: Tuple, R <: ModelRank}
-  Grid::G
-  Θ::MP
-  ϕ::P
-  opt_cache::Vector{Float64}
-  MarginalBuffers::Dict{Function,MarginalBuffer}
+struct Model{G <: GridVessel, MP <: ModelParam, P <: Tuple, R <: ModelRank, B <: ModelDiffBuffer}
+	Grid::G
+	Θ::MP
+    ϕ::P
+    MarginalBuffers::Dict{Function,MarginalBuffer}
+	diff_buffer::B
+	function Model(Grid::G, Θ::MP, ϕ::P, MarginalBuffers::Dict{Function,MarginalBuffer}, diff_buffer::B, ::Type{R}) where {G, MP, P, R, B}
+		Model{G, MP, P, R, B}(Grid, Θ, ϕ, MarginalBuffers, diff_buffer)
+	end
 end
 
 #Commented out model options instead of deleting it, to serve as a reminder.
@@ -71,8 +74,8 @@ function Model(θ::MP, ϕ::Tuple, ::Type{R}, ::Type{B}, ::Type{V}) where {p, MP 
     Model( Grid, θ, ϕ, R )
 end
 
-function Model(Grid::G, Θ::MP, ϕ::P, ::Type{R}) where {p, G, MP <: ModelParam{p}, P, R}
-    Model{G, MP, P, R}(Grid, Θ, ϕ, zeros(p), Dict{Function,MarginalCache}())
+function Model(Grid::G, Θ::MP, ϕ::P, ::Type{R}) where {p, G, MP <: ModelParam{p}, P <: Tuple, R}
+    Model(Grid, Θ, ϕ, Dict{Function,MarginalCache}(), ModelDiffBuffer(ϕ, Val{p}), R)
 end
 
 MarginalCache(M::Model, f::Function, n::Int) = get!( () -> MarginalCache(n), m.mc, (f, n) )

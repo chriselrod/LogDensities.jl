@@ -1,22 +1,10 @@
 module LogDensities
 
-using SparseQuadratureGrids, StaticArrays, ConstrainedParameters
+using SparseQuadratureGrids, StaticArrays, ConstrainedParameters, DiffBase, ForwardDiff, Optim
 
-import  Base.show,
-        Base.getindex,
-        Base.setindex!,
-        Base.size,
-        Base.IndexStyle,
-        Base.+,
-        Base.*,
-        Base.convert,
-        Base.Val,
-        Base.length,
-        ConstrainedParameters.type_length,
-        ConstrainedParameters.param_type_length,
-        ConstrainedParameters.construct,
-        ConstrainedParameters.log_jacobian,
-        ConstrainedParameters.update!
+import  Base: show, getindex, setindex!, size, IndexStyle, convert, Val, length,
+        ConstrainedParameters: type_length, param_type_length, construct, log_jacobian, update!
+	Optim: Options, initial_state, update_state!, NewtonTrustRegionState
 
 export  Data,
         parameters,

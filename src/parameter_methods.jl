@@ -1,8 +1,8 @@
-struct ModelParam{p, T, V <: AbstractArray{T,1}, P <: Tuple} <: parameter{T}
+struct ModelParam{p, T, V <: AbstractVector{T}, P <: Tuple} <: parameter{T}
     v::V
     Θ::P
 end
-function ModelParam(::Type{Val{p}}, x::V, Θ::P) where {p, T, V <: AbstractArray{T,1}, P <: Tuple}
+function ModelParam(::Type{Val{p}}, x::V, Θ::P) where {p, T, V <: AbstractVector{T}, P <: Tuple}
     ModelParam{p, T, V, P}(x, Θ)
 end
 
