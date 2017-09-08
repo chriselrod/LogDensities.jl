@@ -1,25 +1,25 @@
-struct ModelDiffBuffer{p, Dg, Dh, Pg, Ph, tg, Tg, Th, c, T)
-    dr::DiffBase.MutableDiffResult{2,T,Tuple{Array{T,1},Array{T,2}}}
-    gc::ForwardDiff.GradientConfig{Tg,T,c,Array{Dg,1}}
-    hc::ForwardDiff.HessianConfig{Th,T,c,Array{Dh,1},tg,Tuple{Array{Dg,1},Array{Dg,1}}}
+struct ModelDiffBuffer{p, Dg, Dh, Pg, Ph, tg, Tg, Th, c}
+    dr::DiffBase.DiffResult{2,Float64,Tuple{Array{Float64,1},Array{Float64,2}}}
+    gc::ForwardDiff.GradientConfig{Tg,Float64,c,Array{Dg,1}}
+    hc::ForwardDiff.HessianConfig{Th,Float64,c,Array{Dh,1},tg,Tuple{Array{Dg,1},Array{Dg,1}}}
     mp_g::ModelParam{p, Dg, Vector{Dg}, Pg}
     mp_h::ModelParam{p, Dh, Vector{Dh}, Ph}
 	calls::Vector{Int}
     method::Optim.NewtonTrustRegion{Float64}
-    state::Optim.NewtonTrustRegionState{T,1,Array{T,1}}
+    state::Optim.NewtonTrustRegionState{Float64,1,Array{Float64,1}}
     options::Optim.Options{Void}
 end
-function ModelDiffBuffer(Θ::Tuple, ::Type{Val{p}}, options = Optim.Options()) where p
+function ModelDiffBuffer(Θ::Tuple, ::Type{Val{p}}, options = Optim.Options(), ::Type{T} = Float64) where {p, T}
 
 	initial_x = zeros(T, p)
 	chunk = chunk_size(Val{p})
 
-	dr = DiffBase.MutableDiffResult(zero(T), (Array{T}(p), Array{T}(p,p)) )
+	dr = DiffBase.DiffResult(zero(T), (Array{T}(p), Array{T}(p,p)) )
 	gc = ForwardDiff.GradientConfig(nothing, initial_x, chunk)
 	hc = ForwardDiff.HessianConfig(nothing, dr, initial_x, chunk)
 
-	mp_g = construct(x::Array{eltype(gc.duals)}(p), Θ, Val{p})
-	mp_h = construct(x::Array{eltype(hc.gradient_config.duals)}(p), Θ, Val{p})
+	mp_g = construct(Array{eltype(gc.duals)}(p), Θ, Val{p})
+	mp_h = construct(Array{eltype(hc.gradient_config.duals)}(p), Θ, Val{p})
 
 	calls = zeros(Int, 2)
 
@@ -34,9 +34,9 @@ function ModelDiffBuffer(Θ::Tuple, ::Type{Val{p}}, options = Optim.Options()) w
               true,
               true,
               T(method.initial_delta),
-              lambda,
+              NaN,
               method.eta, # eta
-              zero(T))    
+              zero(T))
 
     ModelDiffBuffer(dr, gc, hc, mp_g, mp_h, calls, method, state, options)
 end
@@ -45,20 +45,20 @@ struct ModelDiff{p, B <: ModelDiffBuffer{p}, Fg <: Function, Fh <: Function}
 	ld_g::Fg
 	ld_h::Fh
 end
-function ModelDiff(d::ModelDiffBuffer, f::Function, data)
+function ModelDiff(f::Function, d::B, data) where {p, B <: ModelDiffBuffer{p}}
     #Need to make sure the closures properly catch types.
 	function ld_g(x)
         copy!(d.mp_g.v, x)
 		update!(d.mp_g)
-        log_jacobian(d.mp_g) + f(data, d.mp_g.Θ...)
+        - log_jacobian(d.mp_g) - f(data, d.mp_g.Θ...)
     end
 	function ld_h(x)
         copy!(d.mp_h.v, x)
 		update!(d.mp_h)
-        log_jacobian(d.mp_h) + f(data, d.mp_h.Θ...)
+        - log_jacobian(d.mp_h) - f(data, d.mp_h.Θ...)
     end
     fill!(d.calls, 0)
-    ModelDiff(d, ld_g, ld_h)
+    ModelDiff{p, B, typeof(ld_g), typeof(ld_h)}(d, ld_g, ld_h)
 end
 
 
@@ -69,7 +69,7 @@ function update_g!(d::ModelDiff, x)
 end
 function update_h!(d::ModelDiff, x)
 	d.mdb.calls .+= 1
-	ForwardDiff.hessian!(d.mdb.hr, d.ld_h, x, d.mdb.hc)
+	ForwardDiff.hessian!(d.mdb.dr, d.ld_h, x, d.mdb.hc)
 end
 value(d::ModelDiff) = d.mdb.dr.value
 gradient(d::ModelDiff) = d.mdb.dr.derivs[1]
@@ -135,7 +135,7 @@ function optimize!(d::ModelDiff{n}, options::Options = d.mdb.options, state::Opt
 end
 
 
-function set_state!(d::ModelDiff, state::Optim.NewtontrustRegionState{T,1,Array{T,1}}) where T
+function set_state!(d::ModelDiff, state::Optim.NewtonTrustRegionState{T,1,Array{T,1}}) where T
     state.delta = one(T)
     state.rho = zero(T)
     update_h!(d, state.x)
@@ -200,5 +200,3 @@ function update_state!(d::ModelDiff, state::NewtonTrustRegionState{T}) where T
 
     false
 end
-
-

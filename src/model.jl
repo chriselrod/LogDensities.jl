@@ -11,11 +11,10 @@ struct Model{G <: GridVessel, MP <: ModelParam, P <: Tuple, R <: ModelRank, B <:
     ϕ::P
     MarginalBuffers::Dict{Function,MarginalBuffer}
 	diff_buffer::B
-	function Model(Grid::G, Θ::MP, ϕ::P, MarginalBuffers::Dict{Function,MarginalBuffer}, diff_buffer::B, ::Type{R}) where {G, MP, P, R, B}
-		Model{G, MP, P, R, B}(Grid, Θ, ϕ, MarginalBuffers, diff_buffer)
-	end
 end
-
+function Model(Grid::G, Θ::MP, ϕ::P, MarginalBuffers::Dict{Function,MarginalBuffer}, diff_buffer::B, ::Type{R}) where {G, MP, P, R, B}
+    Model{G, MP, P, R, B}(Grid, Θ, ϕ, MarginalBuffers, diff_buffer)
+end
 #Commented out model options instead of deleting it, to serve as a reminder.
 #It would probably be a relatively convenient API change.
 #struct ModelOptions{R <: ModelRank, T <: Bool}
@@ -75,10 +74,12 @@ function Model(θ::MP, ϕ::Tuple, ::Type{R}, ::Type{B}, ::Type{V}) where {p, MP 
 end
 
 function Model(Grid::G, Θ::MP, ϕ::P, ::Type{R}) where {p, G, MP <: ModelParam{p}, P <: Tuple, R}
-    Model(Grid, Θ, ϕ, Dict{Function,MarginalCache}(), ModelDiffBuffer(ϕ, Val{p}), R)
+    Model(Grid, Θ, ϕ, Dict{Function,MarginalBuffer}(), ModelDiffBuffer(ϕ, Val{p}), R)
 end
 
-MarginalCache(M::Model, f::Function, n::Int) = get!( () -> MarginalCache(n), m.mc, (f, n) )
+
+
+MarginalBuffer(M::Model, f::Function, n::Int) = get!( () -> MarginalBuffer(n), m.mc, (f, n) )
 
 
 function Base.show(io::IO, ::MIME"text/plain", m::Model)
