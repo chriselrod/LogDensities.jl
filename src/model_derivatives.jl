@@ -47,15 +47,17 @@ struct ModelDiff{p, B <: ModelDiffBuffer{p}, Fg <: Function, Fh <: Function}
 end
 function ModelDiff(f::Function, d::B, data) where {p, B <: ModelDiffBuffer{p}}
     #Need to make sure the closures properly catch types.
-	function ld_g(x)
-        copy!(d.mp_g.v, x)
-		update!(d.mp_g)
-        - log_jacobian(d.mp_g) - f(data, d.mp_g.Θ...)
-    end
-	function ld_h(x)
-        copy!(d.mp_h.v, x)
-		update!(d.mp_h)
-        - log_jacobian(d.mp_h) - f(data, d.mp_h.Θ...)
+    let data = data, d = d
+        function ld_g(x)
+            copy!(d.mp_g.v, x)
+		    update!(d.mp_g)
+            - log_jacobian(d.mp_g) - f(data, d.mp_g.Θ...)
+        end
+    	function ld_h(x)
+            copy!(d.mp_h.v, x)
+    		update!(d.mp_h)
+            - log_jacobian(d.mp_h) - f(data, d.mp_h.Θ...)
+        end
     end
     fill!(d.calls, 0)
     ModelDiff{p, B, typeof(ld_g), typeof(ld_h)}(d, ld_g, ld_h)
